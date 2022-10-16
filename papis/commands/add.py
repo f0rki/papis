@@ -302,7 +302,16 @@ def run(paths: List[str],
         for doc_path in in_documents_paths
     ]
 
-    tmp_document = papis.document.Document(temp_dir)
+    tmp_document = papis.document.Document(temp_dir, data=data)
+    tmp_document.save()
+
+    # Check if the user wants to edit before submitting the doc
+    # to the library
+    if edit:
+        logger.info("Editing file before adding it")
+        papis.api.edit_file(tmp_document.get_info_file(), wait=True)
+        logger.info("Loading the changes made by editing")
+        tmp_document.load()
 
     if base_path is None:
         base_path = pathlib.Path(papis.config.get_lib_dirs()[0]).expanduser()
@@ -316,13 +325,15 @@ def run(paths: List[str],
         out_folder_path = out_folder_path / out_folder_name
         logger.info("Got an automatic folder name")
     else:
-        temp_doc = papis.document.Document(data=data)
+        # temp_doc = papis.document.Document(data=data)
+        temp_doc = tmp_document
         temp_path = out_folder_path / pathlib.Path(folder_name)
         components: List[str] = []
         assert temp_path.is_relative_to(out_folder_path)
         while temp_path != out_folder_path and temp_path.is_relative_to(out_folder_path):
             path_component = temp_path.name
             component_formatted = papis.format.format(path_component, temp_doc)
+            logger.info("Folder path: '%s'", out_folder_path)
             component_cleaned = papis.utils.clean_document_name(component_formatted)
             components.insert(0, component_cleaned)
             # continue with parent path component
@@ -331,8 +342,7 @@ def run(paths: List[str],
         # right order to the path
         for c in components:
             out_folder_path /= c
-
-        del temp_doc
+        # del temp_doc
 
     if not out_folder_path.is_relative_to(base_path):
         raise ValueError("formatting produced path outside of library")
@@ -386,14 +396,6 @@ def run(paths: List[str],
 
     tmp_document.update(data)
     tmp_document.save()
-
-    # Check if the user wants to edit before submitting the doc
-    # to the library
-    if edit:
-        logger.info("Editing file before adding it")
-        papis.api.edit_file(tmp_document.get_info_file(), wait=True)
-        logger.info("Loading the changes made by editing")
-        tmp_document.load()
 
     # Duplication checking
     logger.info("Checking if this document is already in the library")

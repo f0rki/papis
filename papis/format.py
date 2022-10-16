@@ -48,10 +48,7 @@ class PythonFormater(Formater):
         doc_name = doc_key or papis.config.getstring("format-doc-name")
         fdoc = Document()
         fdoc.update(doc)
-        try:
-            return fmt.format(**{doc_name: fdoc}, **additional)
-        except Exception as exception:
-            return str(exception)
+        return fmt.format(**{doc_name: fdoc}, **additional)
 
 
 class Jinja2Formater(Formater):
@@ -77,12 +74,9 @@ class Jinja2Formater(Formater):
                doc_key: str = "",
                additional: Dict[str, Any] = {}) -> str:
         doc_name = doc_key or papis.config.getstring("format-doc-name")
-        try:
-            return str(self.jinja2
-                           .Template(fmt)
-                           .render(**{doc_name: doc}, **additional))
-        except Exception as exception:
-            return str(exception)
+        return str(self.jinja2
+                       .Template(fmt)
+                       .render(**{doc_name: doc}, **additional))
 
 
 def _extension_name() -> str:
