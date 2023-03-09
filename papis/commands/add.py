@@ -109,6 +109,7 @@ import papis.strings
 import papis.downloaders
 import papis.git
 import papis.format
+import papis.commands.addto
 
 logger = logging.getLogger('add')  # type: logging.Logger
 

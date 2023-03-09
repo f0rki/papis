@@ -1,8 +1,10 @@
 import os
 import string
+import tempfile
 import logging
 from typing import Optional, List, Dict, Any
 
+import requests
 import click
 
 import papis.config
@@ -75,13 +77,30 @@ class Importer(papis.importer.Importer):
     def fetch(self: papis.importer.Importer) -> Any:
         self.logger.info("Reading input file = '%s'", self.uri)
         try:
-            bib_data = bibtex_to_dict(self.uri)
-            if len(bib_data) > 1:
-                self.logger.warning(
-                    'The bibtex file contains more than one entry, '
-                    'only taking the first entry')
+            bib_data = []
+            if self.uri.startswith("http://") or self.uri.startswith("https://"):
+                resp = requests.get(self.uri)
+                if resp.status == 200:
+                    with tempfile.NamedTemporaryFile(suffix=".papis.bib", mode="w+b", delete=False) as tf:
+                        tf.write(resp.content)
+                        tf.flush()
+                        bib_data = bibtex_to_dict(tf.name)
+                else:
+                    self.logger.warn(f"Failed to fetch '{self.uri} - http error {resp.status}'")
+            else:
+                bib_data = bibtex_to_dict(self.uri)
+
             if bib_data:
+                if len(bib_data) > 1:
+                    self.logger.warning(
+                        'The bibtex file contains more than one entry, '
+                        'only taking the first entry')
+
                 self.ctx.data = bib_data[0]
+            else:
+                self.logger.warn(f"empty or invalid bibtex at {self.uri}")
+        except requests.Exception as e:
+            self.logger.warn(f"Failed to fetch '{self.uri} - {e}'")
         except Exception as e:
             self.logger.debug(e)
 
