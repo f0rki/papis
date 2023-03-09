@@ -208,6 +208,7 @@ setup(
             "fallback=papis.downloaders.fallback:Downloader",
             "arxiv=papis.arxiv:Downloader",
             "projecteuclid=papis.downloaders.projecteuclid:Downloader",
+            "usenix=papis.downloaders.usenix:Downloader",
         ],
         'papis.explorer': [
             "lib=papis.commands.explore:lib",
