@@ -19,19 +19,20 @@ Command-line Interface
 """
 
 import os
+import tempfile
 from typing import List, Optional
 
 import click
-
-import papis.pick
-import papis.utils
+import papis.cli
+import papis.commands.add
+import papis.config
 import papis.document
 import papis.git
-import papis.config
-import papis.commands.add
-import papis.cli
-import papis.strings
 import papis.logging
+import papis.pick
+import papis.strings
+import papis.utils
+import requests
 
 logger = papis.logging.get_logger(__name__)
 
@@ -50,43 +51,61 @@ def run(document: papis.document.Document,
     for _ in range(len(document.get_files())):
         string_append = next(g)
 
+    tmp_file = None
     new_file_list = []
-    for i in range(len(filepaths)):
-        in_file_path = filepaths[i]
+    for in_file_path in filepaths:
+
+        if in_file_path.startswith("http://") or in_file_path.startswith(
+                "https://"):
+            tmp_file = tempfile.NamedTemporaryFile(delete=False)
+            try:
+                resp = requests.get(in_file_path)
+                if resp.status_code == 200:
+                    tmp_file.write(resp.content)
+                    tmp_file.close()
+                    in_file_path = tmp_file.name
+                else:
+                    logger.warning("Failed to fetch '%s' (http error %d)",
+                                   in_file_path, resp.status_code)
+                    in_file_path = None
+            except requests.exceptions.BaseHTTPError as e:
+                logger.warning("Failed to fetch '%s' (reason: %s)",
+                               in_file_path, e)
+                in_file_path = None
+            except Exception as e:
+                logger.error(e)
+                in_file_path = None
+                return
 
         if not os.path.exists(in_file_path):
             raise Exception("{} not found".format(in_file_path))
 
         # Rename the file in the staging area
         new_filename = papis.utils.clean_document_name(
-            papis.commands.add.get_file_name(
-                papis.document.to_dict(document),
-                in_file_path,
-                suffix=string_append
-            )
-        )
+            papis.commands.add.get_file_name(papis.document.to_dict(document),
+                                             in_file_path,
+                                             suffix=string_append))
         new_file_list.append(new_filename)
 
-        end_document_path = os.path.join(
-            _doc_folder,
-            new_filename
-        )
+        end_document_path = os.path.join(_doc_folder, new_filename)
         string_append = next(g)
 
         # Check if the absolute file path is > 255 characters
         if len(os.path.abspath(end_document_path)) >= 255:
-            logger.warning(
-                "Length of absolute path is > 255 characters. "
-                "This may cause some issues with some pdf viewers")
+            logger.warning("Length of absolute path is > 255 characters. "
+                           "This may cause some issues with some pdf viewers")
 
         if os.path.exists(end_document_path):
-            logger.warning(
-                "%s already exists, ignoring...", end_document_path)
+            logger.warning("%s already exists, ignoring...", end_document_path)
             continue
 
         import shutil
         logger.info("[CP] '%s' to '%s'", in_file_path, end_document_path)
         shutil.copy(in_file_path, end_document_path)
+
+        if tmp_file:
+            os.unlink(tmp_file.name)
+            tmp_file = None
 
     if "files" not in document:
         document["files"] = []
@@ -106,22 +125,18 @@ def run(document: papis.document.Document,
 @papis.cli.query_argument()
 @papis.cli.git_option(help="Add and commit files")
 @papis.cli.sort_option()
-@click.option(
-    "-f", "--files",
-    help="File fullpaths to documents",
-    multiple=True,
-    type=click.Path(exists=True))
-@click.option(
-    "--file-name",
-    help="File name for the document (papis format)",
-    default=None)
+@click.option("-f",
+              "--files",
+              help="File fullpaths to documents",
+              multiple=True,
+              type=click.Path(exists=True))
+@click.option("-u", "--urls", help="URLs to documents", multiple=True)
+@click.option("--file-name",
+              help="File name for the document (papis format)",
+              default=None)
 @papis.cli.doc_folder_option()
-def cli(query: str,
-        git: bool,
-        files: List[str],
-        file_name: Optional[str],
-        sort_field: Optional[str],
-        doc_folder: str,
+def cli(query: str, git: bool, files: List[str], urls: List[str],
+        file_name: Optional[str], sort_field: Optional[str], doc_folder: str,
         sort_reverse: bool) -> None:
     """Add files to an existing document"""
     if doc_folder:
@@ -146,4 +161,4 @@ def cli(query: str,
     if file_name is not None:  # Use args if set
         papis.config.set("add-file-name", file_name)
 
-    run(document, files, git=git)
+    run(document, files + urls, git=git)
